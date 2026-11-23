@@ -11,7 +11,7 @@ import {
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-const API_URL = 'http://localhost:5000/api/customers';
+const API_URL = 'https://isp-internet-mapping.onrender.com/api/customers';
 
 // প্রিমিয়াম কালার প্যালেট
 const PREMIUM_COLORS = {

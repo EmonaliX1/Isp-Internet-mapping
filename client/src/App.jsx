@@ -13,7 +13,7 @@ import L from 'leaflet';
 
 const API_URL = 'https://isp-internet-mapping.onrender.com/api/customers';
 
-// প্রিমিয়াম কালার প্যালেট
+// প্রিমিয়াম কালার প্যালেট
 const PREMIUM_COLORS = {
   blue: '#2563eb',   // < 9 (High / Strong)
   green: '#10b981',  // 9 - 22 (Good)
@@ -21,13 +21,13 @@ const PREMIUM_COLORS = {
   red: '#ef4444',    // >= 27 (Critical)
 };
 
-// লেজার ভ্যালু অনুযায়ী স্ট্যাটাস ও প্রিমিয়াম রঙ নির্ণয়
+// লেজার ভ্যালু অনুযায়ী স্ট্যাটাস ও প্রিমিয়াম রঙ নির্ণয়
 function getLaserInfo(laserValue) {
   const val = Number(laserValue);
   if (Number.isNaN(val)) {
     return { key: 'green', color: PREMIUM_COLORS.green, label: 'N/A', text: 'Normal' };
   }
-  const mag = Math.abs(val); // -18.5 বা 18.5 উভয়কেই 18.5 হিসেবে ধরবে
+  const mag = Math.abs(val);
 
   if (mag < 9) {
     return { key: 'blue', color: PREMIUM_COLORS.blue, label: `${val} dBm`, text: 'Strong / High (Blue)' };
@@ -41,7 +41,7 @@ function getLaserInfo(laserValue) {
   return { key: 'red', color: PREMIUM_COLORS.red, label: `${val} dBm`, text: 'Critical / Loss (Red)' };
 }
 
-// প্রিমিয়াম কাস্টমার পিন আইকন
+// প্রিমিয়াম কাস্টমার পিন আইকন
 function createPremiumPin(color, size = 26) {
   return L.divIcon({
     className: 'premium-marker',
@@ -121,45 +121,6 @@ function MapClickHandler({ isPicking, onPickLocation }) {
   return null;
 }
 
-const initialCustomers = [
-  {
-    id: '1',
-    name: 'রহিম উদ্দিন',
-    phone: '01711000001',
-    pppoe: 'rahim_ftth',
-    package: '15 Mbps',
-    due: 500,
-    laser: -18.2,
-    lat: 24.177908,
-    lng: 88.96567,
-    note: 'মেইন রোড, নীল গেট',
-  },
-  {
-    id: '2',
-    name: 'করিম আহমেদ',
-    phone: '01711000002',
-    pppoe: 'karim_net',
-    package: '20 Mbps',
-    due: 0,
-    laser: -24.5,
-    lat: 24.1795,
-    lng: 88.9675,
-    note: 'মসজিদ গলি, ২য় তলা',
-  },
-  {
-    id: '3',
-    name: 'সালমা খাতুন',
-    phone: '01711000003',
-    pppoe: 'salma_isp',
-    package: '10 Mbps',
-    due: 400,
-    laser: -27.8,
-    lat: 24.1765,
-    lng: 88.9642,
-    note: 'স্কুল মোড়, বক্স #A2',
-  },
-];
-
 const emptyForm = {
   name: '',
   phone: '',
@@ -172,60 +133,48 @@ const emptyForm = {
   lng: '',
 };
 
+const normalizeCustomer = (item) => ({
+  ...item,
+  id: item._id || item.id,
+});
+
 export default function App() {
-  // 'local' অথবা 'mongodb'
-  const [dataSource, setDataSource] = useState('local');
-  const [dbStatus, setDbStatus] = useState('LocalStorage');
+  const [dbStatus, setDbStatus] = useState('Connecting...');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [customers, setCustomers] = useState([]);
 
-  const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('pro_isp_customers_v2');
-      return saved ? JSON.parse(saved) : initialCustomers;
-    } catch {
-      return initialCustomers;
-    }
-  });
-
-  // আপনার বর্তমান লাইভ লোকেশন
   const [myLocation, setMyLocation] = useState(null);
   const [flyTarget, setFlyTarget] = useState(null);
 
   const [search, setSearch] = useState('');
-  const [laserFilter, setLaserFilter] = useState('all'); // all | blue | green | yellow | red
+  const [laserFilter, setLaserFilter] = useState('all');
 
-  // নতুন পিন বা এডিট ফর্ম স্টেট
   const [isPickingMode, setIsPickingMode] = useState(false);
   const [pickedCoords, setPickedCoords] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null); // null হলে নতুন, ID থাকলে এডিট
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
 
-  // LocalStorage সিঙ্ক
-  useEffect(() => {
-    localStorage.setItem('pro_isp_customers_v2', JSON.stringify(customers));
-  }, [customers]);
-
-  // MongoDB থেকে ডাটা লোড করার ফাংশন
+  // MongoDB থেকে সব কাস্টমার লোড করা
   const fetchFromMongo = useCallback(async () => {
+    setIsSyncing(true);
     try {
       const res = await fetch(API_URL);
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
-      const normalized = data.map((item) => ({ ...item, id: item._id || item.id }));
-      setCustomers(normalized);
+      const list = Array.isArray(data) ? data : data.customers || data.data || [];
+      setCustomers(list.map(normalizeCustomer));
       setDbStatus('MongoDB Connected');
     } catch {
-      setDbStatus('MongoDB Offline (Local active)');
+      setDbStatus('MongoDB Disconnected');
+    } finally {
+      setIsSyncing(false);
     }
   }, []);
 
   useEffect(() => {
-    if (dataSource === 'mongodb') {
-      fetchFromMongo();
-    } else {
-      setDbStatus('LocalStorage');
-    }
-  }, [dataSource, fetchFromMongo]);
+    fetchFromMongo();
+  }, [fetchFromMongo]);
 
   // বর্তমান অবস্থান ট্র্যাক করা
   const locateMe = useCallback((shouldFly = false) => {
@@ -239,7 +188,7 @@ export default function App() {
         }
       },
       () => {
-        if (shouldFly) alert('আপনার বর্তমান GPS লোকেশন পাওয়া যায়নি। পারমিশন অন করুন।');
+        if (shouldFly) alert('আপনার বর্তমান GPS লোকেশন পাওয়া যায়নি। পারমিশন অন করুন।');
       },
       { enableHighAccuracy: true }
     );
@@ -288,7 +237,8 @@ export default function App() {
 
   // বিদ্যমান কাস্টমার এডিট করা
   const handleOpenEdit = (customer) => {
-    setEditingId(customer.id);
+    const targetId = customer._id || customer.id;
+    setEditingId(targetId);
     setPickedCoords([customer.lat, customer.lng]);
     setFormData({
       name: customer.name || '',
@@ -304,7 +254,7 @@ export default function App() {
     setModalOpen(true);
   };
 
-  // সেভ বা আপডেট (Local + MongoDB)
+  // সরাসরি MongoDB-তে সেভ বা আপডেট করা
   const handleSubmit = async (e) => {
     e.preventDefault();
     const latNum = Number(formData.lat);
@@ -323,68 +273,64 @@ export default function App() {
       note: formData.note.trim(),
     };
 
-    if (editingId) {
-      // Edit Existing
-      if (dataSource === 'mongodb') {
-        try {
-          const res = await fetch(`${API_URL}/${editingId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) {
-            const updated = await res.json();
-            setCustomers((prev) =>
-              prev.map((item) => (item.id === editingId ? { ...updated, id: updated._id || editingId } : item))
-            );
-          }
-        } catch {
-          setDbStatus('MongoDB Error - Local updated');
-        }
-      }
-      setCustomers((prev) =>
-        prev.map((item) => (item.id === editingId ? { ...item, ...payload } : item))
-      );
-      setFlyTarget({ coords: [latNum, lngNum], ts: Date.now() });
-    } else {
-      // Create New
-      let newRecord = { ...payload, id: String(Date.now()) };
-      if (dataSource === 'mongodb') {
-        try {
-          const res = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) {
-            const created = await res.json();
-            newRecord = { ...created, id: created._id };
-          }
-        } catch {
-          setDbStatus('MongoDB Error - Local saved');
-        }
-      }
-      setCustomers((prev) => [newRecord, ...prev]);
-      setFlyTarget({ coords: [latNum, lngNum], ts: Date.now() });
-    }
+    try {
+      if (editingId) {
+        const res = await fetch(`${API_URL}/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Update failed');
 
-    setModalOpen(false);
-    setEditingId(null);
-    setPickedCoords(null);
-    setFormData(emptyForm);
+        const updatedData = await res.json();
+        const updatedRecord = normalizeCustomer(updatedData.customer || updatedData.data || updatedData);
+
+        setCustomers((prev) =>
+          prev.map((item) =>
+            (item._id || item.id) === editingId
+              ? { ...item, ...payload, ...updatedRecord, id: updatedRecord.id || editingId }
+              : item
+          )
+        );
+        setDbStatus('MongoDB Connected');
+      } else {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Create failed');
+
+        const createdData = await res.json();
+        const createdRecord = normalizeCustomer(createdData.customer || createdData.data || createdData);
+
+        setCustomers((prev) => [createdRecord, ...prev]);
+        setDbStatus('MongoDB Connected');
+      }
+
+      setFlyTarget({ coords: [latNum, lngNum], ts: Date.now() });
+      setModalOpen(false);
+      setEditingId(null);
+      setPickedCoords(null);
+      setFormData(emptyForm);
+    } catch {
+      setDbStatus('MongoDB Save Failed');
+      alert('MongoDB-তে ডাটা সেভ বা আপডেট করা যায়নি। ব্যাকএন্ড কানেকশন চেক করুন।');
+    }
   };
 
-  // ডিলিট
+  // MongoDB থেকে ডিলিট করা
   const handleDelete = async (id) => {
-    if (!window.confirm('এই কাস্টমারকে মুছে ফেলতে চান?')) return;
-    if (dataSource === 'mongodb') {
-      try {
-        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-      } catch {
-        // ignore
-      }
+    if (!window.confirm('এই কাস্টমারকে MongoDB থেকে মুছে ফেলতে চান?')) return;
+    try {
+      const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setCustomers((prev) => prev.filter((c) => (c._id || c.id) !== id));
+      setDbStatus('MongoDB Connected');
+    } catch {
+      setDbStatus('MongoDB Delete Failed');
+      alert('MongoDB থেকে ডাটা ডিলিট করা যায়নি।');
     }
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
   };
 
   const openGoogleMaps = (lat, lng) => {
@@ -415,39 +361,24 @@ export default function App() {
             </span>
           </div>
 
-          {/* MongoDB / LocalStorage সুইচ */}
+          {/* MongoDB Reload বাটন */}
           <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
             <button
-              onClick={() => setDataSource('local')}
+              onClick={fetchFromMongo}
+              disabled={isSyncing}
               style={{
                 flex: 1,
-                padding: '6px',
+                padding: '7px',
                 borderRadius: '6px',
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: '12px',
-                fontWeight: 600,
-                background: dataSource === 'local' ? '#334155' : '#1e293b',
+                fontWeight: 700,
+                background: '#059669',
                 color: '#fff',
               }}
             >
-              LocalStorage
-            </button>
-            <button
-              onClick={() => setDataSource('mongodb')}
-              style={{
-                flex: 1,
-                padding: '6px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                background: dataSource === 'mongodb' ? '#059669' : '#1e293b',
-                color: '#fff',
-              }}
-            >
-              MongoDB Sync
+              {isSyncing ? 'Syncing...' : '🔄 Reload MongoDB'}
             </button>
           </div>
 
@@ -539,9 +470,10 @@ export default function App() {
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
           {filteredCustomers.map((c) => {
             const laser = getLaserInfo(c.laser);
+            const cid = c._id || c.id;
             return (
               <div
-                key={c.id}
+                key={cid}
                 onClick={() => setFlyTarget({ coords: [c.lat, c.lng], ts: Date.now() })}
                 style={{
                   padding: '10px 12px',
@@ -570,7 +502,7 @@ export default function App() {
                 </div>
 
                 <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>
-                  PPPoE: <b>{c.pppoe}</b> • {c.package} • বকেয়া: <b>{c.due}৳</b>
+                  PPPoE: <b>{c.pppoe}</b> • {c.package} • বকেয়া: <b>{c.due}৳</b>
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>📞 {c.phone}</div>
                 {c.note && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>📌 {c.note}</div>}
@@ -608,7 +540,7 @@ export default function App() {
                     ✏️ এডিট
                   </button>
                   <button
-                    onClick={() => handleDelete(c.id)}
+                    onClick={() => handleDelete(cid)}
                     style={{
                       padding: '5px 8px',
                       background: '#fee2e2',
@@ -647,7 +579,7 @@ export default function App() {
             }}
           >
             <h3 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#0f172a' }}>
-              {editingId ? 'কাস্টমার তথ্য এডিট করুন' : 'নতুন কাস্টমার যুক্ত করুন'}
+              {editingId ? 'কাস্টমার তথ্য এডিট করুন (MongoDB)' : 'নতুন কাস্টমার যুক্ত করুন (MongoDB)'}
             </h3>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -683,7 +615,7 @@ export default function App() {
                 />
                 <input
                   type="number"
-                  placeholder="বকেয়া (৳)"
+                  placeholder="বকেয়া (৳)"
                   value={formData.due}
                   onChange={(e) => setFormData({ ...formData, due: e.target.value })}
                   style={{ padding: '7px', borderRadius: '5px', border: '1px solid #cbd5e1', fontSize: '13px' }}
@@ -794,15 +726,16 @@ export default function App() {
           {/* কাস্টমার মার্কারসমূহ */}
           {filteredCustomers.map((c) => {
             const laser = getLaserInfo(c.laser);
+            const cid = c._id || c.id;
             return (
-              <Marker key={c.id} position={[c.lat, c.lng]} icon={pinCache[laser.key]}>
+              <Marker key={cid} position={[c.lat, c.lng]} icon={pinCache[laser.key]}>
                 <Popup>
                   <div style={{ minWidth: '215px', lineHeight: 1.55 }}>
                     <h4 style={{ margin: '0 0 4px 0', fontSize: '15px' }}>{c.name}</h4>
                     <div><b>PPPoE:</b> {c.pppoe}</div>
                     <div><b>ফোন:</b> <a href={`tel:${c.phone}`}>{c.phone}</a></div>
                     <div><b>প্যাকেজ:</b> {c.package}</div>
-                    <div><b>বকেয়া:</b> {c.due} টাকা</div>
+                    <div><b>বকেয়া:</b> {c.due} টাকা</div>
                     <div>
                       <b>Laser:</b>{' '}
                       <span style={{ color: laser.color, fontWeight: 700 }}>{laser.text}</span>

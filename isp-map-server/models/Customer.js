@@ -9,11 +9,26 @@ const customerSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
+      default: 'N/A',
       trim: true,
     },
-    packageName: {
+    pppoe: {
       type: String,
-      default: 'Standard',
+      default: 'N/A',
+      trim: true,
+    },
+    package: {
+      type: String,
+      default: 'N/A',
+      trim: true,
+    },
+    due: {
+      type: Number,
+      default: 0,
+    },
+    laser: {
+      type: Number,
+      default: -18,
     },
     lat: {
       type: Number,
@@ -23,8 +38,9 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    address: {
+    note: {
       type: String,
+      default: '',
       trim: true,
     },
   },
